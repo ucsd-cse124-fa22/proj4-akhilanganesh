@@ -37,23 +37,113 @@ func (surfClient *RPCClient) GetBlock(blockHash string, blockStoreAddr string, b
 }
 
 func (surfClient *RPCClient) PutBlock(block *Block, blockStoreAddr string, succ *bool) error {
-	panic("todo")
+	// connect to the server
+	conn, err := grpc.Dial(blockStoreAddr, grpc.WithInsecure())
+	if err != nil {
+		return err
+	}
+	c := NewBlockStoreClient(conn)
+
+	// perform the call
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	s, err := c.PutBlock(ctx, block)
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	*succ = s.Flag
+
+	// close the connection
+	return conn.Close()
 }
 
 func (surfClient *RPCClient) HasBlocks(blockHashesIn []string, blockStoreAddr string, blockHashesOut *[]string) error {
-	panic("todo")
+	// connect to the server
+	conn, err := grpc.Dial(blockStoreAddr, grpc.WithInsecure())
+	if err != nil {
+		return err
+	}
+	c := NewBlockStoreClient(conn)
+
+	// perform the call
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	bhs, err := c.HasBlocks(ctx, &BlockHashes{Hashes: blockHashesIn})
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	*blockHashesOut = bhs.Hashes
+
+	// close the connection
+	return conn.Close()
 }
 
 func (surfClient *RPCClient) GetFileInfoMap(serverFileInfoMap *map[string]*FileMetaData) error {
-	panic("todo")
+	// connect to the server
+	conn, err := grpc.Dial(surfClient.MetaStoreAddr, grpc.WithInsecure())
+	if err != nil {
+		return err
+	}
+	c := NewMetaStoreClient(conn)
+
+	// perform the call
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	fileInfoMap, err := c.GetFileInfoMap(ctx)
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	*serverFileInfoMap = fileInfoMap.FileInfoMap
+
+	// close the connection
+	return conn.Close()
 }
 
 func (surfClient *RPCClient) UpdateFile(fileMetaData *FileMetaData, latestVersion *int32) error {
-	panic("todo")
+	// connect to the server
+	conn, err := grpc.Dial(surfClient.MetaStoreAddr, grpc.WithInsecure())
+	if err != nil {
+		return err
+	}
+	c := NewMetaStoreClient(conn)
+
+	// perform the call
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	ver, err := c.UpdateFile(ctx, fileMetaData)
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	*latestVersion = ver.Version
+
+	// close the connection
+	return conn.Close()
 }
 
 func (surfClient *RPCClient) GetBlockStoreAddr(blockStoreAddr *string) error {
-	panic("todo")
+	// connect to the server
+	conn, err := grpc.Dial(surfClient.MetaStoreAddr, grpc.WithInsecure())
+	if err != nil {
+		return err
+	}
+	c := NewMetaStoreClient(conn)
+
+	// perform the call
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	addr, err := c.GetBlockStoreAddr(ctx)
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	*blockStoreAddr = addr.Addr
+
+	// close the connection
+	return conn.Close()
 }
 
 // This line guarantees all method for RPCClient are implemented
