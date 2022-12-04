@@ -97,7 +97,7 @@ func PrintMappings(mappings *map[string]string) {
 	fmt.Printf("{")
 	var i int = 0
 	for key, val := range *mappings {
-		fmt.Printf("{%s, %s}", key, val)
+		fmt.Printf("{%s,%s}", key, val)
 		i++
 		if i != len(*mappings) {
 			fmt.Printf(", ")
