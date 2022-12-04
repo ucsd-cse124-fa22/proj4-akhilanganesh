@@ -2,7 +2,6 @@ package main
 
 import (
 	"cse224/proj4/pkg/surfstore"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
@@ -83,7 +82,7 @@ func main() {
 	// hash blocks
 	var blockHashes []string = []string(nil)
 	for _, block := range blocks {
-		blockHashes = append(blockHashes, hashRing.Hash(hex.EncodeToString(block.BlockData)))
+		blockHashes = append(blockHashes, surfstore.GetBlockHashString(block.BlockData))
 	}
 
 	// get mappings from block hashes

@@ -17,6 +17,7 @@ run-metastore:
 
 .PHONY: run-blocklocator
 run-blocklocator:
-	go run cmd/SurfstoreBlockLocatorExec/main.go 1 4096 test/template/2blocks.txt
-	go run cmd/SurfstoreBlockLocatorExec/main.go -downServers 3,4 10 4096 test/template/2blocks.txt
-	go run cmd/SurfstoreBlockLocatorExec/main.go -downServers 0,2 10 4096 test/template/2blocks.txt
+	go run cmd/SurfstoreBlockLocatorExec/main.go 1 4096 test/file1.dat
+	go run cmd/SurfstoreBlockLocatorExec/main.go 1 25 test/file1.dat
+	go run cmd/SurfstoreBlockLocatorExec/main.go -downServers 3,4 10 4096 test/file1.dat
+	go run cmd/SurfstoreBlockLocatorExec/main.go -downServers 0,2 10 4096 test/file1.dat
