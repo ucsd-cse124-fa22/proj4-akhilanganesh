@@ -69,7 +69,6 @@ func main() {
 	} else {
 		downedServers = []int(nil)
 	}
-	log.Println(downedServers)
 
 	// consistent hash ring
 	hashRing := surfstore.NewConsistentHashRing(numServers, downedServers)
@@ -85,8 +84,6 @@ func main() {
 	for _, block := range blocks {
 		blockHashes = append(blockHashes, surfstore.GetBlockHashString(block.BlockData))
 	}
-
-	log.Println(hashRing.ServerMap)
 
 	// get mappings from block hashes
 	mappings := hashRing.OutputMap(blockHashes)
