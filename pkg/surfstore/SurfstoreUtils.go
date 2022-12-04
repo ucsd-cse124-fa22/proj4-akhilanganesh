@@ -1,57 +1,100 @@
 package surfstore
 
 import (
-	"filepath"
+	"path/filepath"
 	"io"
+	"log"
 	"os"
 )
 
 // Implement the logic for a client syncing with the server here.
 func ClientSync(client RPCClient) {
-	baseDirFile, err := os.Open(filepath.Abs(client.BaseDir))
+	var i int // indexing variable
+
+
+	// get list of local files in base directory
+	log.Println("Syncing")
+	path, err := filepath.Abs(client.BaseDir)
+	baseDirFile, err := os.Open(path)
 	if err != nil {
-		log.Println("Base directory non-existent, now created")
-		os.MkDir(filepath.Abs(client.BaseDir), 0750)
-		os.Exit(0)
+		log.Fatal("Base directory non-existent")
+	}
+	files, err := baseDirFile.Readdir(0)
+	if err != nil {
+		log.Printf("%v\n", err)
 	}
 
-	indexExists bool
-	files, err := baseDirFile.ReAddir(0)
-	if err != nil {
-		log.Fatal("ReAddir failed")
-	}
+
 
 	// gets all working directory file blocks and metadata
-	blocks map[string]*Block
-	metas map[string]*FileMetaData
+	blocks := make(map[string]*Block)
+	metas := make(map[string]*FileMetaData)
 	for _, info := range files {
-		if !info.IsDir() {
-			fileBlocks, err := ParseFileIntoBlocks(info.Name(), client.BlockSize)
+		if !info.IsDir() && info.Name() != DEFAULT_META_FILENAME {
+			log.Printf("Parsing %s\n", info.Name())
+			filePath := ConcatPath(client.BaseDir, info.Name())
+			fileBlocks, err := ParseFileIntoBlocks(filePath, client.BlockSize)
+			if err != nil {
+				log.Printf("%v\n", err)
+				continue
+			}
 			for _, block := range fileBlocks {
 				blocks[GetBlockHashString(block.BlockData)] = block
 			}
 			metas[info.Name()] = ParseFileMetaData(info.Name(), fileBlocks)
 			if err != nil {
-				log.Printf("Blocks not properly retrieved for %s", info.Name())
+				log.Printf("Blocks not properly retrieved for %s\n", info.Name())
 			}
 		}
 	}
 
-	// get metadata from local index
-	index map[string]*FileMetaData = LoadMetaFromMetaFile(client.BaseDir)
+	// local file set
+	metas_keys := make([]string, len(metas))
+	i = 0
+	for key, _ := range metas {
+		metas_keys[i] = key
+		i++
+	}
+	log.Printf("Parsed local files: %v\n", metas_keys)
 
-	// find all file differences
-	diffs map[string]*FileMetaData // proposed update set
+
+
+	// get metadata from local index
+	index, err := LoadMetaFromMetaFile(client.BaseDir)
+	if err != nil {
+		log.Printf("%v\n", err)
+	}
+
+
+
+	// find all file differences between index and local
+	diffs := make(map[string]*FileMetaData) // proposed update set
 	for key, val := range index {
 		md, exists := metas[key]
-		if !exists {
+		// deleted file on index
+		if len(val.BlockHashList) == 1 && val.BlockHashList[0] == "0" {
+			
+			// file still on local
+			if exists {
+				diffs[key] = metas[key]
+				diffs[key].Version = index[key].Version + 1
+			}
+		
+		// file on index but not on local
+		} else if !exists {
 			diffs[key] = index[key]
 			diffs[key].Version = index[key].Version + 1
-			diffs[key].HashBlockList = ["0"]
+			diffs[key].BlockHashList = []string{"0"}
+		
+		// file on both index and local
 		} else {
+			
+			// different file sizes (in terms of blocks)
 			if len(md.BlockHashList) != len(val.BlockHashList) {
 				diffs[key] = metas[key]
 				diffs[key].Version = index[key].Version + 1
+			
+			// check for differences in block hashes at each position
 			} else {
 				for i, hash := range md.BlockHashList {
 					if hash != val.BlockHashList[i] {
@@ -62,7 +105,8 @@ func ClientSync(client RPCClient) {
 			}
 		}
 	}
-	for key, val := range metas {
+	// files on local not on index
+	for key, _ := range metas {
 		_, exists := index[key]
 		if !exists {
 			diffs[key] = metas[key]
@@ -70,115 +114,209 @@ func ClientSync(client RPCClient) {
 		}
 	}
 
-	// try to push update set
-	blockStoreAddr string
-	err := client.GetBlockStoreAddr(&blockStoreAddr)
+	// server update set
+	diffs_keys := make([]string, len(diffs))
+	i = 0
+	for key, _ := range diffs {
+		diffs_keys[i] = key
+		i++
+	}
+	log.Printf("Server update set created: %v\n", diffs_keys)
+
+
+
+	// push update set metadata to server
+	var blockStoreAddr string
+	err = client.GetBlockStoreAddr(&blockStoreAddr)
+	if err != nil {
+		log.Printf("%v\n", err)
+	}
 	for key, val := range diffs {
-		version int
+		var version int32
 		err = client.UpdateFile(val, &version)
+		if err != nil {
+			log.Printf("%v\n", err)
+		}
 		if version == -1 {
+			log.Printf("Update for %s failed\n", key)
 			delete(diffs, key)
 		}
 	}
-	for key, val := range diffs {
-		for hash := range val.HashBlockList {
-			success bool
-			err = client.PutBlock(blocks[hash], blockStoreAddr, &success)
+	log.Println("Pushed all updates")
+
+	// push update set blocks to server
+	for _, val := range diffs {
+		for _, hash := range val.BlockHashList {
+			if hash == "0" {
+				continue
+			}
+			block, exists := blocks[hash]
+			if !exists {
+				log.Printf("Non-existent block with hash: %.10s", hash)
+			}
+			var success bool
+			err = client.PutBlock(block, blockStoreAddr, &success)
+			if err != nil {
+				log.Printf("%v\n", err)
+			}
 		}
 	}
+	log.Println("Pushed all blocks")
 	
+
+
 	// get all new metadata and blocks
-	serverMD map[string]*FileMetaData
+	var serverMD map[string]*FileMetaData
 	err = client.GetFileInfoMap(&serverMD)
+	if err != nil {
+		log.Printf("%v\n", err)
+	}
+
+
 
 	// find new content from server metadata
-	newContent map[string]*FileMetaData
-	newBlockHashes []string
+	newContent := make(map[string]*FileMetaData)
+	newBlockHashes := make([]string, 0)
 	for key, val := range serverMD {
 		md, exists := metas[key]
-		if !exists ||  {
-			newContent[key] = val
-			for _, hash := range val.HashBlockList {
-				append(newBlockHashes, hash)
+
+		// deleted file on server
+		if len(val.BlockHashList) == 1 && val.BlockHashList[0] == "0" {
+			
+			// file still on local
+			if exists {
+				err = os.Remove(ConcatPath(client.BaseDir, val.Filename))
 			}
+
+		// file not on local but on server
+		} else if !exists {
+			newContent[key] = val
+			for _, hash := range val.BlockHashList {
+				newBlockHashes = append(newBlockHashes, hash)
+			}
+		
+		// file on both local and server
 		} else {
-			diff bool = false
-			for i, hash := range md.BlockHashList {
-				if hash != val.BlockHashList[i] {
+			var diff bool = false
+			for i, hash := range val.BlockHashList {
+
+				// different block between local and server versions
+				if i >= len(md.BlockHashList) || hash != md.BlockHashList[i] {
 					diff = true
-					append(newBlockHashes, hash)
+					newBlockHashes = append(newBlockHashes, hash)
 				}
 			}
-			if diff || len(md.BlockHashList) != len(val.BlockHashList) {
+
+			// file has differences between local and server
+			if diff || len(md.BlockHashList) > len(val.BlockHashList) {
 				newContent[key] = val
 			}
 		}
 	}
 
+	// local update set
+	newCont_keys := make([]string, len(newContent))
+	i = 0
+	for key, _ := range newContent {
+		newCont_keys[i] = key
+		i++
+	}
+	log.Printf("Local update set created: %v\n", newCont_keys)
+	log.Printf("Local update block hashes: %v", newBlockHashes)
+
 	// request new blocks
 	err = client.HasBlocks(newBlockHashes, blockStoreAddr, &newBlockHashes)
+	if err != nil {
+		log.Printf("%v\n", err)
+	}
+	
 	for _, hash := range newBlockHashes {
-		newBlock Block
+		var newBlock Block
 		err = client.GetBlock(hash, blockStoreAddr, &newBlock)
+		if err != nil {
+			log.Printf("%v\n", err)
+		}
 		blocks[hash] = &newBlock
 	}
+	log.Println("Requisite blocks retrieved")
 
-	// update local files
+
+
+	// update local files (local reconstitution)
 	for _, val := range newContent {
-		fd, err := os.Create(val.FileName)
+		fd, err := os.Create(ConcatPath(client.BaseDir, val.Filename))
 		defer fd.Close()
 		if err != nil {
+			log.Printf("%v\n", err)
 			continue
 		}
-		for _, hash := range val.HashBlockList {
-			n_bytes, err := fd.Write(blocks[hash].BlockData)
+		
+		for _, hash := range val.BlockHashList {
+			_, err := fd.Write(blocks[hash].BlockData)
 			if err != nil {
+				log.Printf("%v\n", err)
 				log.Println("File corrupted")
 			}
 		}
 	}
+	log.Println("Updated local files")
+
+
 
 	// update index.txt
 	err = WriteMetaFile(serverMD, client.BaseDir)
 	if err != nil {
-		log.Println(err)
+		log.Printf("%v\n", err)
 	}
+	log.Println("All synched")
 
 	// done
 }
 
 func ParseFileMetaData(fileName string, fileBlocks []*Block) *FileMetaData {
-	hashList string[]
+	log.Println("Parsing file metadata")
+	var hashList []string
 	for _, block := range fileBlocks {
-		append(hashList, GetBlockHashString(block.BlockData))
+		hashList = append(hashList, GetBlockHashString(block.BlockData))
 	}
 	return &FileMetaData{Filename: fileName, Version: -1 /* local */, BlockHashList: hashList}
 }
 
 func ParseFileIntoBlocks(fileName string, blockSize int) ([]*Block, error) {
-	blocks []Block
+	var blocks []*Block = make([]*Block, 0)
 	
-	fd, err := os.Open(filepath.Abs(ConcatPath(baseDir, fileName)))
+	fd, err := os.Open(fileName)
 	if err != nil {
 		return blocks, err
 	}
 	defer fd.Close()
 
-	buf []byte
+	log.Printf("Parsing file %s into blocks", fileName)
+	var buf []byte = make([]byte, blockSize)
+	var block_data []byte = make([]byte, blockSize)
+	var bytes_in_block int = 0
 	for {
-		n_bytes, err := fd.Read(buf)
-		for (n_bytes >= blockSize) {
-			append(blocks, &Block{BlockData: buf[:blockSize], BlockSize: blockSize})
-			buf = buf[blockSize:]
-			n_bytes -= blockSize
+		num_bytes, err := fd.Read(buf)
+
+		// if a block is filled, store the block and build the next one
+		if bytes_in_block + num_bytes >= blockSize {
+			copy(block_data[bytes_in_block:], buf[:blockSize - bytes_in_block])
+			blocks = append(blocks, &Block{BlockData: append([]byte(nil), block_data...), BlockSize: int32(blockSize)})
+			bytes_in_block = 0
+			num_bytes -= blockSize - bytes_in_block
 		}
 
+		// fill block a bit by buffer amount
+		copy(block_data[bytes_in_block:bytes_in_block + num_bytes], buf[:num_bytes])
+		bytes_in_block += num_bytes
+
+		// if EOF encountered
 		if err == io.EOF {
-			if n_bytes > 0 {
-				append(blocks, &Block{BlockData: buf, BlockSize: n_bytes})
+			if bytes_in_block > 0 {
+				blocks = append(blocks, &Block{BlockData: append([]byte(nil), block_data[:bytes_in_block]...), BlockSize: int32(bytes_in_block)})
 			}
 			break
-		} else if err != nil {
+		} else if err != nil { // error occurred, safely exit with error message
 			return blocks, err
 		}
 	}

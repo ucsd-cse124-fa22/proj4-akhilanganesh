@@ -2,9 +2,9 @@ package surfstore
 
 import (
 	context "context"
-	"time"
-
 	grpc "google.golang.org/grpc"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	"time"
 )
 
 type RPCClient struct {
@@ -91,7 +91,7 @@ func (surfClient *RPCClient) GetFileInfoMap(serverFileInfoMap *map[string]*FileM
 	// perform the call
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	fileInfoMap, err := c.GetFileInfoMap(ctx)
+	fileInfoMap, err := c.GetFileInfoMap(ctx, &emptypb.Empty{})
 	if err != nil {
 		conn.Close()
 		return err
@@ -135,7 +135,7 @@ func (surfClient *RPCClient) GetBlockStoreAddr(blockStoreAddr *string) error {
 	// perform the call
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	addr, err := c.GetBlockStoreAddr(ctx)
+	addr, err := c.GetBlockStoreAddr(ctx, &emptypb.Empty{})
 	if err != nil {
 		conn.Close()
 		return err

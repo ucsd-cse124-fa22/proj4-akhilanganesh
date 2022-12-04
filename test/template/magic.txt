@@ -1,0 +1,11 @@
+Here are some magic tricks.
+
+
+
+First, we should see this file completely copied over and established on a different directory.
+
+
+Second, any edits made should reflect to the server and back to a third directory.
+
+
+Don't forget not to use the template directory cuz then you be messing shit up fr fr
