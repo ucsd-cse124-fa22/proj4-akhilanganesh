@@ -11,29 +11,47 @@ type ConsistentHashRing struct {
 }
 
 func (c ConsistentHashRing) InsertServer(addr string) {
-	panic("to do")
+	c.ServerMap[c.Hash(addr)] = addr
 }
 
 func (c ConsistentHashRing) DeleteServer(addr string) {
-	panic("to do")
+	delete(c.ServerMap, c.Hash(addr))
 }
 
 func (c ConsistentHashRing) GetResponsibleServer(blockId string) string {
-	// Find the next largest key from ServerMap
-	panic("to do")
+	// find the next largest key from ServerMap
+	minServer := ""
+	minServerHash := ""
+
+	closestServer := ""
+	closestServerHash := ""
+	for key, val := range c.ServerMap {
+		if minServer == "" || minServerHash > key {
+			minServer = val
+			minServerHash = key
+		}
+		if blockId < key && (closestServer == "" || key < closestServerHash) {
+			closestServer = val
+			closestServerHash = key
+		}
+	}
+	if closestServer == "" {
+		closestServer = minServer
+		closestServerHash = minServerHash
+	}
+	return closestServer
 }
 
 func (c ConsistentHashRing) Hash(addr string) string {
 	h := sha256.New()
 	h.Write([]byte(addr))
 	return hex.EncodeToString(h.Sum(nil))
-
 }
 
 func (c ConsistentHashRing) OutputMap(blockHashes []string) map[string]string {
 	res := make(map[string]string)
 	for i := 0; i < len(blockHashes); i++ {
-		res["block"+strconv.Itoa(i)] = c.GetResponsibleServer(blockHashes[i])
+		res[blockHashes[i]] = c.GetResponsibleServer(blockHashes[i])
 	}
 	return res
 }

@@ -14,3 +14,7 @@ run-blockstore:
 .PHONY: run-metastore
 run-metastore:
 	go run cmd/SurfstoreServerExec/main.go -d -s meta -l localhost:8081
+
+.PHONY: run-blocklocator
+run-blocklocator:
+	go run cmd/SurfstoreBlockLocatorExec/main.go -downServers 3,4 10 4096 test/template/2blocks.txt
