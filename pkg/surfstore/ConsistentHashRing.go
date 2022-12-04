@@ -62,11 +62,11 @@ func NewConsistentHashRing(numServers int, downServer []int) *ConsistentHashRing
 	}
 
 	for i := 0; i < numServers; i++ {
-		c.InsertServer(strconv.Itoa(i))
+		c.InsertServer("blockstore" + strconv.Itoa(i))
 	}
 
 	for i := 0; i < len(downServer); i++ {
-		c.DeleteServer(strconv.Itoa(downServer[i]))
+		c.DeleteServer("blockstore" + strconv.Itoa(downServer[i]))
 	}
 
 	return c
